@@ -18,7 +18,4 @@ struct bpf_prog_load_attr_maps {
 	struct bpf_pinned_map *pinned_maps;
 };
 
-int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
-			     struct bpf_object **pobj, int *prog_fd);
-
 #endif /* __COMMON_LIBBPF_H */

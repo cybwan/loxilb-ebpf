@@ -183,10 +183,12 @@ llb_setup_pkt_ring(struct bpf_object *bpf_obj __attribute__((unused)))
 
   if (pkt_fd < 0) return -1;
 
-   /* Set up ring buffer polling */
-  pb_opts.sample_cb = llb_handle_pkt_event;
+  /* Set up ring buffer polling */
+  //pb_opts.sample_cb = llb_handle_pkt_event;
 
-  pb = perf_buffer__new(pkt_fd, 8 /* 32KB per CPU */, &pb_opts);
+  pb = perf_buffer__new(pkt_fd, 8 /* 32KB per CPU */,
+                        llb_handle_pkt_event, NULL,
+                        NULL, &pb_opts); 
   if (libbpf_get_error(pb)) {
     fprintf(stderr, "Failed to create perf buffer\n");
     goto cleanup;

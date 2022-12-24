@@ -10,6 +10,7 @@
 #include <linux/err.h>
 
 #include "common_defines.h"
+#include "common_libbpf.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX	4096
@@ -17,6 +18,7 @@
 
 int verbose = 1;
 
+#if 0
 int xdp_link_attach(int ifindex, __u32 xdp_flags, int prog_fd)
 {
 	int err;
@@ -129,20 +131,19 @@ struct bpf_object *load_bpf_object_file(const char *filename, int ifindex)
 	/* Notice how a pointer to a libbpf bpf_object is returned */
 	return obj;
 }
+#endif
 
-static struct bpf_object *open_bpf_object(const char *file, int ifindex)
+static struct bpf_object *open_bpf_object(const char *file, int ifindex, const char *pin_path)
 {
 	int err;
 	struct bpf_object *obj;
 	struct bpf_map *map;
 	struct bpf_program *prog, *first_prog = NULL;
+  struct bpf_object_open_opts oopts = { 0 };
 
-	struct bpf_object_open_attr open_attr = {
-		.file = file,
-		.prog_type = BPF_PROG_TYPE_XDP,
-	};
+  oopts.pin_root_path = pin_path;
 
-	obj = bpf_object__open_xattr(&open_attr);
+	obj = bpf_object__open_file(file, &oopts);
 	if (IS_ERR_OR_NULL(obj)) {
 		err = -PTR_ERR(obj);
 		fprintf(stderr, "ERR: opening BPF-OBJ file(%s) (%d): %s\n",
@@ -158,8 +159,7 @@ static struct bpf_object *open_bpf_object(const char *file, int ifindex)
 	}
 
 	bpf_object__for_each_map(map, obj) {
-		if (!bpf_map__is_offload_neutral(map))
-			bpf_map__set_ifindex(map, ifindex);
+		bpf_map__set_ifindex(map, ifindex);
 	}
 
 	if (!first_prog) {
@@ -211,7 +211,7 @@ struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,
 	int err;
 	struct bpf_object *obj;
 
-	obj = open_bpf_object(file, ifindex);
+	obj = open_bpf_object(file, ifindex, pin_dir);
 	if (!obj) {
 		fprintf(stderr, "ERR: failed to open object %s\n", file);
 		return NULL;
@@ -238,6 +238,7 @@ struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 {
 	struct bpf_program *bpf_prog;
 	struct bpf_object *bpf_obj;
+  struct bpf_xdp_attach_opts opts = { 0 };
 	int offload_ifindex = 0;
 	int prog_fd = -1;
 	int err;
@@ -251,8 +252,6 @@ struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 		bpf_obj = load_bpf_object_file_reuse_maps(cfg->filename,
 							  offload_ifindex,
 							  cfg->pin_dir);
-	else
-		bpf_obj = load_bpf_object_file(cfg->filename, offload_ifindex);
 	if (!bpf_obj) {
 		fprintf(stderr, "ERR: loading file: %s\n", cfg->filename);
 		exit(EXIT_FAIL_BPF);
@@ -265,10 +264,15 @@ struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 
 	if (cfg->progsec[0])
 		/* Find a matching BPF prog section name */
-		bpf_prog = bpf_object__find_program_by_title(bpf_obj, cfg->progsec);
+    bpf_object__for_each_program(bpf_prog, bpf_obj) {
+  		const char *name = bpf_program__section_name (bpf_obj);
+      if (!strcmp(name, cfg->progsec)) {
+        break;
+      }
+    }
 	else
 		/* Find the first program */
-		bpf_prog = bpf_program__next(NULL, bpf_obj);
+		bpf_prog = bpf_object__next_program(bpf_obj, NULL);
 
 	if (!bpf_prog) {
 		fprintf(stderr, "ERR: couldn't find a program in ELF section '%s'\n", cfg->progsec);
@@ -287,11 +291,30 @@ struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 	 * is our select file-descriptor handle. Next step is attaching this FD
 	 * to a kernel hook point, in this case XDP net_device link-level hook.
 	 */
-	err = xdp_link_attach(cfg->ifindex, cfg->xdp_flags, prog_fd);
+	err = bpf_xdp_attach(cfg->ifindex, prog_fd, cfg->xdp_flags, &opts);
 	if (err)
 		exit(err);
 
 	return bpf_obj;
+}
+
+int xdp_link_detach(int ifindex, __u32 xdp_flags, __u32 expected_prog_id)
+{
+	int err;
+  struct bpf_xdp_attach_opts opts = { 0 };
+
+	err = bpf_xdp_detach(ifindex, xdp_flags, &opts);
+	if (err) {
+		fprintf(stderr, "ERR: link xdp detach failed (err=%d): %s\n",
+			-err, strerror(-err));
+		return EXIT_FAIL_XDP;
+	}
+
+	if (verbose)
+		printf("INFO: %s() removed XDP on ifindex:%d\n",
+		       __func__, ifindex);
+
+	return EXIT_OK;
 }
 
 #define XDP_UNKNOWN	XDP_REDIRECT + 1
