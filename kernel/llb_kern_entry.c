@@ -155,7 +155,8 @@ int tc_packet_func_fw(struct __sk_buff *md)
     return DP_DROP;
   }
 
-  return dp_do_fw_main(md, xf);
+  return 0;
+//  return dp_do_fw_main(md, xf);
 }
 
 SEC("tc_packet_hook4")

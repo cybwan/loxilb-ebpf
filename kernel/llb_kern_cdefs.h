@@ -325,21 +325,21 @@ struct {
         __uint(max_entries, LLB_INTF_MAP_ENTRIES);
 } bd_stats_map SEC(".maps");
 
-/*
 struct {
         __uint(type,        BPF_MAP_TYPE_PERF_EVENT_ARRAY);
         __type(key,         int);
         __type(value,       __u32);
         __uint(max_entries, MAX_CPUS);
 } pkt_ring SEC(".maps");
-*/
 
+#if 0
 struct bpf_map_def SEC("maps") pkt_ring = {
           .type             = BPF_MAP_TYPE_PERF_EVENT_ARRAY,
           .key_size         = sizeof(int),
           .value_size       = sizeof(__u32),
           .max_entries      = MAX_CPUS,
 };
+#endif
 
 struct {
         __uint(type,        BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -362,21 +362,12 @@ struct {
         __uint(max_entries, 1);
 } xfis SEC(".maps");
 
-/*
 struct {
         __uint(type,        BPF_MAP_TYPE_DEVMAP);
         __type(key,         int);
         __type(value,       int);
         __uint(max_entries, LLB_INTERFACES);
 } tx_intf_map SEC(".maps");
-*/
-
-struct bpf_map_def SEC("maps") tx_intf_map = {
-  .type                     = BPF_MAP_TYPE_DEVMAP,
-  .key_size                 = sizeof(int),
-  .value_size               = sizeof(int),
-  .max_entries              = LLB_INTERFACES,
-};
 
 struct {
         __uint(type,        BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -455,15 +446,15 @@ struct {
         __uint(max_entries, LLB_NATV4_MAP_ENTRIES);
 } nat_stats_map SEC(".maps");
 
-/*
 struct {
         __uint(type,        BPF_MAP_TYPE_LPM_TRIE);
         __type(key,         struct dp_rtv4_key);
         __type(value,       struct dp_rt_tact);
+        __uint(map_flags,   BPF_F_NO_PREALLOC);
         __uint(max_entries, LLB_RTV4_MAP_ENTRIES);
 } rt_v4_map SEC(".maps");
-*/
 
+#if 0
 struct bpf_map_def SEC("maps") rt_v4_map = {
   .type = BPF_MAP_TYPE_LPM_TRIE,
   .key_size = sizeof(struct dp_rtv4_key),
@@ -471,6 +462,7 @@ struct bpf_map_def SEC("maps") rt_v4_map = {
   .map_flags = BPF_F_NO_PREALLOC,
   .max_entries = LLB_RTV4_MAP_ENTRIES
 };
+#endif
 
 struct {
         __uint(type,        BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -479,13 +471,13 @@ struct {
         __uint(max_entries, LLB_RTV4_MAP_ENTRIES);
 } rt_v4_stats_map SEC(".maps");
 
-struct bpf_map_def SEC("maps") rt_v6_map = {
-  .type = BPF_MAP_TYPE_LPM_TRIE,
-  .key_size = sizeof(struct dp_rtv6_key),
-  .value_size = sizeof(struct dp_rt_tact),
-  .map_flags = BPF_F_NO_PREALLOC,
-  .max_entries = LLB_RTV6_MAP_ENTRIES
-};
+struct {
+        __uint(type,        BPF_MAP_TYPE_LPM_TRIE);
+        __type(key,         struct dp_rtv6_key);
+        __type(value,       struct dp_rt_tact);
+        __uint(map_flags,   BPF_F_NO_PREALLOC);
+        __uint(max_entries, LLB_RTV6_MAP_ENTRIES);
+} rt_v6_map SEC(".maps");
 
 struct {
         __uint(type,        BPF_MAP_TYPE_PERCPU_ARRAY);

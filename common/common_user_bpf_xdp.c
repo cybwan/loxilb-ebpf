@@ -141,6 +141,7 @@ static struct bpf_object *open_bpf_object(const char *file, int ifindex, const c
 	struct bpf_program *prog, *first_prog = NULL;
   struct bpf_object_open_opts oopts = { 0 };
 
+  oopts.sz = sizeof(oopts);
   oopts.pin_root_path = pin_path;
 
 	obj = bpf_object__open_file(file, &oopts);
@@ -204,8 +205,9 @@ static int reuse_maps(struct bpf_object *obj, const char *path)
 	return 0;
 }
 
-struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,
+struct bpf_object *load_bpf_object_file(const char *file,
 						   int ifindex,
+               int do_reuse_maps,
 						   const char *pin_dir)
 {
 	int err;
@@ -217,12 +219,14 @@ struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,
 		return NULL;
 	}
 
-	err = reuse_maps(obj, pin_dir);
-	if (err) {
-		fprintf(stderr, "ERR: failed to reuse maps for object %s, pin_dir=%s\n",
-				file, pin_dir);
-		return NULL;
-	}
+  if (do_reuse_maps != 0) {
+  	err = reuse_maps(obj, pin_dir);
+	  if (err) {
+		  fprintf(stderr, "ERR: failed to reuse maps for object %s, pin_dir=%s\n",
+			  	file, pin_dir);
+		  return NULL;
+	  }
+  }
 
 	err = bpf_object__load(obj);
 	if (err) {
@@ -236,21 +240,17 @@ struct bpf_object *load_bpf_object_file_reuse_maps(const char *file,
 
 struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 {
-	struct bpf_program *bpf_prog;
-	struct bpf_object *bpf_obj;
+	struct bpf_program *bpf_prog = NULL;
+	struct bpf_object *bpf_obj = NULL;
   struct bpf_xdp_attach_opts opts = { 0 };
 	int offload_ifindex = 0;
 	int prog_fd = -1;
 	int err;
 
-	/* If flags indicate hardware offload, supply ifindex */
-	if (cfg->xdp_flags & XDP_FLAGS_HW_MODE)
-		offload_ifindex = cfg->ifindex;
-
 	/* Load the BPF-ELF object file and get back libbpf bpf_object */
-	if (cfg->reuse_maps)
-		bpf_obj = load_bpf_object_file_reuse_maps(cfg->filename,
+  bpf_obj = load_bpf_object_file(cfg->filename,
 							  offload_ifindex,
+                cfg->reuse_maps ? 1 : 0,
 							  cfg->pin_dir);
 	if (!bpf_obj) {
 		fprintf(stderr, "ERR: loading file: %s\n", cfg->filename);
@@ -262,15 +262,18 @@ struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 	 * process exit.
 	 */
 
-	if (cfg->progsec[0])
+  fprintf(stdin, "loading %s : %s\n", cfg->progsec, bpf_object__name(bpf_obj));
+	if (cfg->progsec[0]) {
 		/* Find a matching BPF prog section name */
+
+		bpf_prog = bpf_object__next_program(bpf_obj, NULL);
     bpf_object__for_each_program(bpf_prog, bpf_obj) {
-  		const char *name = bpf_program__section_name (bpf_obj);
-      if (!strcmp(name, cfg->progsec)) {
+  		const char *name = bpf_program__section_name (bpf_prog);
+      if (name && !strcmp(name, cfg->progsec)) {
         break;
       }
     }
-	else
+	} else
 		/* Find the first program */
 		bpf_prog = bpf_object__next_program(bpf_obj, NULL);
 
@@ -291,7 +294,7 @@ struct bpf_object *load_bpf_and_xdp_attach(struct config *cfg)
 	 * is our select file-descriptor handle. Next step is attaching this FD
 	 * to a kernel hook point, in this case XDP net_device link-level hook.
 	 */
-	err = bpf_xdp_attach(cfg->ifindex, prog_fd, cfg->xdp_flags, &opts);
+	err = bpf_xdp_attach(cfg->ifindex, prog_fd, cfg->xdp_flags, NULL);
 	if (err)
 		exit(err);
 
@@ -303,7 +306,7 @@ int xdp_link_detach(int ifindex, __u32 xdp_flags, __u32 expected_prog_id)
 	int err;
   struct bpf_xdp_attach_opts opts = { 0 };
 
-	err = bpf_xdp_detach(ifindex, xdp_flags, &opts);
+	err = bpf_xdp_detach(ifindex, xdp_flags, NULL);
 	if (err) {
 		fprintf(stderr, "ERR: link xdp detach failed (err=%d): %s\n",
 			-err, strerror(-err));
